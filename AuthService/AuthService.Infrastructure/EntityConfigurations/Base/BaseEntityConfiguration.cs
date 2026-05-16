@@ -32,5 +32,6 @@ public abstract class BaseEntityConfiguration<TEntity> : IEntityTypeConfiguratio
         builder.Property(entity => entity.DeletedAt);
 
         builder.HasIndex(entity => entity.IsDeleted);
+
     }
 }
