@@ -16,10 +16,12 @@ public sealed class AccessTokenConfiguration : BaseEntityConfiguration<AccessTok
         entity.Property(entity => entity.Token)
             .IsRequired();
 
-        entity.Property(entity => entity.RevocationDate)
-            .IsRequired();
+        entity.Property(entity => entity.RevocationDate);
 
         entity.Property(entity => entity.ExpirationDate)
+            .IsRequired();
+
+        entity.Property(entity => entity.RefreshTokenId)
             .IsRequired();
 
         entity.Property(entity => entity.UserId)

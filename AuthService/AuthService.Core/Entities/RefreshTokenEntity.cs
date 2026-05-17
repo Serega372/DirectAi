@@ -9,8 +9,7 @@ public sealed class RefreshTokenEntity : AEntity
     [Required]
     public required Guid Token { get; set; }
 
-    [Required]
-    public required DateTime RevocationDate { get; set; }
+    public DateTime? RevocationDate { get; set; }
 
     [Required]
     public required DateTime ExpirationDate { get; set; }
@@ -20,4 +19,7 @@ public sealed class RefreshTokenEntity : AEntity
 
     [JsonIgnore]
     public UserEntity? User { get; set; }
+
+    [JsonIgnore]
+    public ICollection<AccessTokenEntity> AccessTokens { get; set; } = [];
 }

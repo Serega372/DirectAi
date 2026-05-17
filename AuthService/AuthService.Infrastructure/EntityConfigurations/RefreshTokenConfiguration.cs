@@ -16,13 +16,17 @@ public sealed class RefreshTokenConfiguration : BaseEntityConfiguration<RefreshT
         entity.Property(entity => entity.Token)
             .IsRequired();
 
-        entity.Property(entity => entity.RevocationDate)
-            .IsRequired();
+        entity.Property(entity => entity.RevocationDate);
 
         entity.Property(entity => entity.ExpirationDate)
             .IsRequired();
 
         entity.Property(entity => entity.UserId)
             .IsRequired();
+
+        entity.HasMany(entity => entity.AccessTokens)
+            .WithOne(accessToken => accessToken.RefreshToken)
+            .HasForeignKey(accessToken => accessToken.RefreshTokenId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

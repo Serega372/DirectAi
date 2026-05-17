@@ -2,6 +2,7 @@
 using AuthService.Core.Entities.Base;
 using AuthService.Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Linq.Expressions;
 
 namespace AuthService.Infrastructure;
@@ -77,4 +78,13 @@ public class DatabaseContext(DbContextOptions<DatabaseContext> options) : DbCont
 
         return await base.SaveChangesAsync(cancellationToken);
     }
+
+    public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default) => 
+        base.Database.BeginTransactionAsync(cancellationToken);
+
+    public Task CommitTransactionAsync(IDbContextTransaction transaction, CancellationToken cancellationToken = default) =>
+        transaction.CommitAsync(cancellationToken);
+
+    public Task RollbackTransactionAsync(IDbContextTransaction transaction, CancellationToken cancellationToken = default) =>
+        transaction.RollbackAsync(cancellationToken);
 }
