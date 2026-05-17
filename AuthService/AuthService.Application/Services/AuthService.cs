@@ -1,14 +1,16 @@
 ﻿using AuthService.Application.Interfaces;
 using AuthService.Application.Models.Auth;
+using AuthService.Application.Models.ErrorModel;
 using AuthService.Core;
 using AuthService.Core.Entities;
+using AuthService.Core.Exceptions;
 using AuthService.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
 
 namespace AuthService.Application.Services;
 
-public sealed class AuthService
+public sealed class AuthService : IAuthService
 {
     private readonly IUserRepository _userRepository;
 
@@ -44,7 +46,7 @@ public sealed class AuthService
         _logger.LogInformation($"{GetType().Name} was initialized");
     }
 
-    public async Task<RegisterResponse?> RegisterAsync(RegisterRequest request, bool isAdmin = false, CancellationToken cancellationToken = default)
+    public async Task<(RegisterResponse? response, ErrorModel? errorModel)> RegisterAsync(RegisterRequest request, bool isAdmin = false, CancellationToken cancellationToken = default)
     {
         await using var transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -53,14 +55,18 @@ public sealed class AuthService
             var existingUser = (await _userRepository.GetAsync(userByEmailFilter, cancellationToken: cancellationToken)).FirstOrDefault();
             if (existingUser is not null)
             {
-                return null;
+                var message = $"[{nameof(UserEntity)}] with email [{existingUser.Email}] already exists";
+                _logger.LogWarning(message);
+                return (null, new ErrorModel(message));
             }
 
             var allRoles = await _roleRepository.GetAsync(cancellationToken: cancellationToken);
             var defaultUserRole = allRoles.FirstOrDefault(role => role.Name == ApplicationConstants.DefaultUserRole);
             if (defaultUserRole is null)
             {
-                throw new ApplicationException();
+                var message = $"[{nameof(RoleEntity)}] with name [{ApplicationConstants.DefaultUserRole}] not found";
+                _logger.LogCritical(message);
+                throw new RoleNotFoundException(message);
             }
 
             var handleRoleId = request.RoleId ?? defaultUserRole.Id;
@@ -81,37 +87,29 @@ public sealed class AuthService
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             var refreshTokenDto = await _refreshTokenRepository.CreateAsync(createdUser.Id, cancellationToken);
-            if (refreshTokenDto is null)
-            {
-                throw new ApplicationException();
-            }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             var accessTokenDto = await _accessTokenRepository.CreateAsync(createdUser.Id, refreshTokenDto.Id, cancellationToken);
-            if (accessTokenDto is null)
-            {
-                throw new ApplicationException();
-            }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(transaction, cancellationToken);
 
-            return new RegisterResponse
+            return (new RegisterResponse
             {
                 AccessToken = accessTokenDto.Token,
                 RefreshToken = refreshTokenDto.Token
-            };
+            }, null);
         }
         catch (Exception ex)
         {
+            _logger.LogCritical($"Exception occured while register user with email [{request.Email}], message: [{ex.Message}].\n Stacktrace: [{ex.StackTrace}]");
             await _unitOfWork.RollbackTransactionAsync(transaction, cancellationToken);
-
             throw;
         }
     }
 
-    public async Task<LoginResponse?> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
+    public async Task<(LoginResponse? response, ErrorModel? errorModel)> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
         await using var transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -120,52 +118,50 @@ public sealed class AuthService
             var existingUser = (await _userRepository.GetAsync(userByEmailFilter, cancellationToken: cancellationToken)).FirstOrDefault();
             if (existingUser is null)
             {
-                return null;
+                var message = $"[{nameof(UserEntity)}] not found by email [{request.Email}]";
+                _logger.LogWarning(message);
+                return (null, new ErrorModel(message));
             }
 
             var isHashesEquals = _passwordHasherService.VerifyPassword(request.Password, existingUser.PasswordHash);
             if (!isHashesEquals)
             {
-                return null;
+                var message = $"Invalid password for email [{existingUser.Email}]";
+                _logger.LogWarning(message);
+                return (null, new ErrorModel(message));
             }
 
             var refreshTokenDto = await _refreshTokenRepository.CreateAsync(existingUser.Id, cancellationToken);
-            if (refreshTokenDto is null)
-            {
-                throw new ApplicationException();
-            }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             var accessTokenDto = await _accessTokenRepository.CreateAsync(existingUser.Id, refreshTokenDto.Id, cancellationToken);
-            if (accessTokenDto is null)
-            {
-                throw new ApplicationException();
-            }
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(transaction, cancellationToken);
 
-            return new LoginResponse
+            return (new LoginResponse
             {
                 AccessToken = accessTokenDto.Token,
                 RefreshToken = refreshTokenDto.Token
-            };
+            }, null);
         }
         catch (Exception ex)
         {
+            _logger.LogCritical($"Exception occured while login user with email [{request.Email}], message: [{ex.Message}].\n Stacktrace: [{ex.StackTrace}]");
             await _unitOfWork.RollbackTransactionAsync(transaction, cancellationToken);
-
             throw;
         }
     }
 
-    public async Task<bool> Logout(LogoutRequest request, CancellationToken cancellationToken = default)
+    public async Task<ErrorModel?> Logout(LogoutRequest request, CancellationToken cancellationToken = default)
     {
         var foundRefreshToken = await _refreshTokenRepository.GetWithAccessTokensAsync(request.RefreshToken, true, cancellationToken: cancellationToken);
         if (foundRefreshToken is null)
         {
-            return false;
+            var message = $"Active [{nameof(RefreshTokenEntity)}] [{request.RefreshToken}] not found";
+            _logger.LogWarning(message);
+            return new ErrorModel($"[{nameof(RefreshTokenEntity)}] not active, already logout");
         }
 
         foundRefreshToken.RevocationDate = DateTime.UtcNow;
@@ -177,6 +173,6 @@ public sealed class AuthService
         _refreshTokenRepository.Update(foundRefreshToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return true;
+        return null;
     }
 }

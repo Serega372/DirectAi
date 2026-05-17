@@ -13,7 +13,7 @@ public sealed class RefreshTokenRepository(
     : BaseRepository<RefreshTokenEntity>(context, logger),
     IRefreshTokenRepository
 {
-    public async Task<RefreshTokenEntity?> CreateAsync(long userId, CancellationToken cancellationToken = default)
+    public async Task<RefreshTokenEntity> CreateAsync(long userId, CancellationToken cancellationToken = default)
     {
         var refreshTokenEntityToCreate = new RefreshTokenEntity
         {

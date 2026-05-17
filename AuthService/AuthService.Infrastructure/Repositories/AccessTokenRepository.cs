@@ -12,14 +12,14 @@ public sealed class AccessTokenRepository(
     : BaseRepository<AccessTokenEntity>(context, logger),
     IAccessTokenRepository
 {
-    public async Task<AccessTokenEntity?> CreateAsync(long userId, long refreshTokenId, CancellationToken cancellationToken = default)
+    public async Task<AccessTokenEntity> CreateAsync(long userId, long refreshTokenId, CancellationToken cancellationToken = default)
     {
         var accessTokenEntityToCreate = new AccessTokenEntity
         {
             Id = default,
             Name = string.Empty,
             Token = Guid.NewGuid(),
-            ExpirationDate = DateTime.UtcNow.AddDays(1),
+            ExpirationDate = DateTime.UtcNow.AddMinutes(30),
             UserId = userId,
             RefreshTokenId = refreshTokenId
         };
