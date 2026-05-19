@@ -103,7 +103,7 @@ public sealed class AuthService : IAuthService
         }
         catch (Exception ex)
         {
-            _logger.LogCritical($"Exception occured while register user with email [{request.Email}], message: [{ex.Message}].\n Stacktrace: [{ex.StackTrace}]");
+            _logger.LogCritical(ex, $"Exception occured while register user with email [{request.Email}]");
             await _unitOfWork.RollbackTransactionAsync(transaction, cancellationToken);
             throw;
         }
@@ -148,7 +148,7 @@ public sealed class AuthService : IAuthService
         }
         catch (Exception ex)
         {
-            _logger.LogCritical($"Exception occured while login user with email [{request.Email}], message: [{ex.Message}].\n Stacktrace: [{ex.StackTrace}]");
+            _logger.LogCritical(ex, $"Exception occured while login user with email [{request.Email}]");
             await _unitOfWork.RollbackTransactionAsync(transaction, cancellationToken);
             throw;
         }
@@ -159,9 +159,8 @@ public sealed class AuthService : IAuthService
         var foundRefreshToken = await _refreshTokenRepository.GetWithAccessTokensAsync(request.RefreshToken, true, cancellationToken: cancellationToken);
         if (foundRefreshToken is null)
         {
-            var message = $"Active [{nameof(RefreshTokenEntity)}] [{request.RefreshToken}] not found";
-            _logger.LogWarning(message);
-            return new ErrorModel($"[{nameof(RefreshTokenEntity)}] not active, already logout");
+            _logger.LogWarning($"Active [{nameof(RefreshTokenEntity)}] [{request.RefreshToken}] not found");
+            return new ErrorModel($"[{nameof(RefreshTokenEntity)}] not active, maybe already logout");
         }
 
         foundRefreshToken.RevocationDate = DateTime.UtcNow;

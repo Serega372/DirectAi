@@ -1,5 +1,6 @@
 ﻿using AuthService.Application.Interfaces;
 using AuthService.Application.Models.Auth;
+using AuthService.Application.Models.ErrorModel;
 using AuthService.Application.Models.RefreshTokens;
 using AuthService.Core.Entities;
 using AuthService.Core.Interfaces;
@@ -41,7 +42,7 @@ public sealed class RefreshTokenService : IRefreshTokenService
         _logger.LogInformation($"{GetType().Name} was initialized");
     }
 
-    public async Task<TokenRefreshResponse?> RefreshTokenAsync(TokenRefreshRequest request, CancellationToken cancellationToken = default)
+    public async Task<(TokenRefreshResponse? response, ErrorModel? errorModel)> RefreshTokenAsync(TokenRefreshRequest request, CancellationToken cancellationToken = default)
     {
         await using var transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
@@ -49,42 +50,36 @@ public sealed class RefreshTokenService : IRefreshTokenService
             var revokedToken = await RevokeAsync(request.RefreshToken, cancellationToken);
             if (revokedToken is null)
             {
-                return null;
+                _logger.LogWarning($"[{nameof(RefreshTokenEntity)}] revocation failed by token [{request.RefreshToken}]");
+                return (null, new ErrorModel($"Old [{nameof(RefreshTokenEntity)}] revocation failed"));
             }
 
             var existingUserByRevokedToken = await _userRepository.GetByIdAsync(revokedToken.UserId, cancellationToken: cancellationToken);
             if (existingUserByRevokedToken is null)
             {
-                return null;
+                _logger.LogWarning($"[{nameof(UserEntity)}] not found by [{nameof(RefreshTokenEntity)}] with token [{revokedToken.Token}] in revocation");
+                return (null, new ErrorModel($"Active [{nameof(UserEntity)}] not found on requested [{nameof(RefreshTokenEntity)}]"));
             }
 
             var refreshTokenDto = await _refreshTokenRepository.CreateAsync(existingUserByRevokedToken.Id, cancellationToken);
-            if (refreshTokenDto is null)
-            {
-                throw new ApplicationException();
-            }
-
+            
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             var accessTokenDto = await _accessTokenRepository.CreateAsync(existingUserByRevokedToken.Id, refreshTokenDto.Id, cancellationToken);
-            if (accessTokenDto is null)
-            {
-                throw new ApplicationException();
-            }
-
+            
             await _unitOfWork.SaveChangesAsync(cancellationToken);
             await _unitOfWork.CommitTransactionAsync(transaction, cancellationToken);
 
-            return new TokenRefreshResponse
+            return (new TokenRefreshResponse
             {
                 AccessToken = accessTokenDto.Token,
                 RefreshToken = refreshTokenDto.Token
-            };
+            }, null);
         }
         catch (Exception ex)
         {
+            _logger.LogCritical(ex, $"Exception occured while refresh token [{request.RefreshToken}]");
             await _unitOfWork.RollbackTransactionAsync(transaction, cancellationToken);
-
             throw;
         }
     }
@@ -99,6 +94,7 @@ public sealed class RefreshTokenService : IRefreshTokenService
         var foundRefreshToken = (await _refreshTokenRepository.GetAsync(refreshTokenPredicate, false, cancellationToken: cancellationToken)).FirstOrDefault();
         if (foundRefreshToken is null)
         {
+            _logger.LogWarning($"[{nameof(RefreshTokenEntity)}] not found by requested refresh token [{refreshToken}]");
             return null;
         }
 

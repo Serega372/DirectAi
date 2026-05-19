@@ -1,10 +1,8 @@
 ﻿using AuthService.Application.Interfaces;
-using AuthService.Application.Models.AccessTokens;
 using AuthService.Application.Models.Auth;
-using AuthService.Application.Models.RefreshTokens;
+using AuthService.Application.Models.ErrorModel;
 using AuthService.Core.Entities;
 using AuthService.Core.Interfaces;
-using AutoMapper;
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
 
@@ -34,7 +32,7 @@ public sealed class AccessTokenService : IAccessTokenService
         _logger.LogInformation($"{GetType().Name} was initialized");
     }
 
-    public async Task<TokenVerifyResponse?> VerifyAsync(TokenVerifyRequest request, CancellationToken cancellationToken = default)
+    public async Task<(TokenVerifyResponse? response, ErrorModel? errorModel)> VerifyAsync(TokenVerifyRequest request, CancellationToken cancellationToken = default)
     {
         Expression<Func<AccessTokenEntity, bool>> accessTokenPredicate = entity =>
             entity.Token == request.AccessToken
@@ -44,21 +42,23 @@ public sealed class AccessTokenService : IAccessTokenService
         var foundAccessToken = (await _accessTokenRepository.GetAsync(accessTokenPredicate, cancellationToken: cancellationToken)).FirstOrDefault();
         if (foundAccessToken is null)
         {
-            return null;
+            _logger.LogWarning($"Active [{nameof(AccessTokenEntity)}] [{request.AccessToken}] not found");
+            return (null, new ErrorModel($"[{nameof(AccessTokenEntity)}] not active or not exists"));
         }
 
         var foundUserByAccessToken = await _userRepository.GetByIdAsync(foundAccessToken.UserId, cancellationToken: cancellationToken);
         if (foundUserByAccessToken is null)
         {
-            return null;
+            _logger.LogWarning($"[{nameof(UserEntity)}] with id [{foundAccessToken.UserId}] not found by access token [{foundAccessToken.Token}]");
+            return (null, new ErrorModel($"[{nameof(UserEntity)}] with requested session not found"));
         }
 
         var permissionsByRole = await _permissionRepository.GetByRoleIdAsync(foundUserByAccessToken.RoleId, cancellationToken: cancellationToken);
-        return new TokenVerifyResponse
+        return (new TokenVerifyResponse
         {
             UserId = foundUserByAccessToken.Id,
             ExpirationDate = foundAccessToken.ExpirationDate,
             Permissions = permissionsByRole
-        };
+        }, null);
     }
 }

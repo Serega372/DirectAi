@@ -57,8 +57,8 @@ public sealed class AuthController : ControllerBase
 
     [HttpPost("login")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(LoginResponse))]
-    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(string))]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized, Type = typeof(string))]
+    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ErrorModel))]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized, Type = typeof(ErrorModel))]
     public async Task<IActionResult> LoginAsync([FromBody] LoginRequest request, CancellationToken cancellationToken = default)
     {
         try
@@ -82,8 +82,7 @@ public sealed class AuthController : ControllerBase
 
     [HttpPost("logout")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(string))]
-    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(string))]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized, Type = typeof(string))]
+    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ErrorModel))]
     public async Task<IActionResult> LogoutAsync([FromBody] LogoutRequest request, CancellationToken cancellationToken = default)
     {
         try
@@ -92,10 +91,10 @@ public sealed class AuthController : ControllerBase
             if (errorModel is not null)
             {
                 _logger.LogError($"User logout failure with refresh token [{request.RefreshToken}], maybe already logout");
-                return Unauthorized(errorModel);
+                return BadRequest(errorModel);
             }
 
-            return Ok();
+            return Ok("Success");
         }
         catch (Exception ex)
         {
@@ -107,24 +106,51 @@ public sealed class AuthController : ControllerBase
 
     [HttpPost("verify")]
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(LoginResponse))]
-    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(string))]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized, Type = typeof(string))]
+    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ErrorModel))]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized, Type = typeof(ErrorModel))]
     public async Task<IActionResult> VerifyTokenAsync([FromBody] TokenVerifyRequest request, CancellationToken cancellationToken = default)
     {
         try
         {
-            var tokenInfo = await _accessTokenService.VerifyAsync(request, cancellationToken: cancellationToken);
+            var (tokenInfo, errorModel) = await _accessTokenService.VerifyAsync(request, cancellationToken: cancellationToken);
             if (tokenInfo is null)
             {
-                _logger.LogError($"");
-                return Unauthorized($"");
+                _logger.LogError($"Verify user with token [{request.AccessToken}] is failure");
+                return Unauthorized(errorModel);
             }
 
             return Ok(tokenInfo);
         }
         catch (Exception ex)
         {
-            return BadRequest($"");
+            var message = $"Exception occured while verify user by token";
+            _logger.LogError(ex, message);
+            return BadRequest(new ErrorModel(message, ex.Message));
+        }
+    }
+
+    [HttpPost("refresh")]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(LoginResponse))]
+    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ErrorModel))]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized, Type = typeof(ErrorModel))]
+    public async Task<IActionResult> RefreshTokenAsync([FromBody] TokenRefreshRequest request, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var (tokenInfo, errorModel) = await _refreshTokenService.RefreshTokenAsync(request, cancellationToken);
+            if (tokenInfo is null)
+            {
+                _logger.LogError($"Refresh user session with token [{request.RefreshToken}] is failure");
+                return Unauthorized(errorModel);
+            }
+
+            return Ok(tokenInfo);
+        }
+        catch (Exception ex)
+        {
+            var message = $"Exception occured while refresh session by token";
+            _logger.LogError(ex, message);
+            return BadRequest(new ErrorModel(message, ex.Message));
         }
     }
 }
