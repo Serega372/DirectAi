@@ -6,5 +6,5 @@ public sealed class PasswordHasherConfig
 
     public int SaltBytes { get; set; }
 
-    public int OutputHashLenth { get; set; }
+    public int OutputHashLength { get; set; }
 }

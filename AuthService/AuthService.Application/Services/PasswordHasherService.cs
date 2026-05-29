@@ -27,17 +27,25 @@ public sealed class PasswordHasherService : IPasswordHasherService
     {
         var salt = RandomNumberGenerator.GetBytes(_config.SaltBytes);
         var hash = Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt, _config.Iterations, HashAlgorithmName.SHA256, 
-            _config.OutputHashLenth
-        );
+            _config.OutputHashLength);
 
-        return Convert.ToBase64String(hash);
+        return $"{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
     }
 
     public bool VerifyPassword(string password, string hashedPassword)
     {
-        var hashToCompare = Convert.FromBase64String(GeneratePasswordHash(password));
-        var originalHash = Convert.FromBase64String(hashedPassword);
+        var hashedPasswordParts = hashedPassword.Split('.');
+        if (hashedPasswordParts.Length != 2)
+        {
+            _logger.LogCritical($"Password must contains only 2 parts - salt and hash, but found [{hashedPassword}]");
+            throw new InvalidOperationException();
+        }
 
-        return CryptographicOperations.FixedTimeEquals(hashToCompare, originalHash);
+        var existingSalt = Convert.FromBase64String(hashedPasswordParts[0]);
+        var existingPasswordHash = Convert.FromBase64String(hashedPasswordParts[1]);
+        var hashToCompare = Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), existingSalt, _config.Iterations, HashAlgorithmName.SHA256,
+            _config.OutputHashLength);
+
+        return CryptographicOperations.FixedTimeEquals(hashToCompare, existingPasswordHash);
     }
 }
